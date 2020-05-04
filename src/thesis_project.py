@@ -4,31 +4,13 @@
 import warnings
 warnings.simplefilter(action='ignore')
 
-import os
-import time
-import joblib
-
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
-
-from sklearn.base import BaseEstimator
-from sklearn.model_selection import KFold, train_test_split, cross_val_score, \
-                                    GridSearchCV
-from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.svm import SVR
-from sklearn.neural_network import MLPRegressor
-from sklearn.preprocessing import LabelEncoder, StandardScaler, \
-                                  PolynomialFeatures
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
 
 import instruments
 
-# sns.set(font_scale=3, style='white')
+
+sns.set(context='paper', font_scale=0.75, style='whitegrid')
 
 
 hapr_data = pd.read_csv("../data/haproxy-data.csv")
@@ -46,17 +28,15 @@ hapr_data = instruments.select_and_rename(hapr_data, mapping)
 hapr_data = instruments.replace_size(hapr_data)
 
 
-mem = 128
-
-hapr_data_small = hapr_data.loc[(hapr_data["size"] == "small") & \
-                                (hapr_data["Memory"] == mem)]
+hapr_data_small = hapr_data.loc[(hapr_data["size"] == "small")]
 hapr_data_small = hapr_data_small[["Max. throughput [kB/s]", "CPU"]]
-hapr_data_big = hapr_data.loc[(hapr_data["size"] == "big")  & \
-                              (hapr_data["Memory"] == mem)]
+_hapr_data_small = hapr_data_small[:800]
+hapr_data_big = hapr_data.loc[(hapr_data["size"] == "big")]
 hapr_data_big = hapr_data_big[["Max. throughput [kB/s]", "CPU"]]
+_hapr_data_big = hapr_data_big[:800]
 
 
-num_measures = hapr_data_small[hapr_data_small["CPU"] == 0.5].shape[0]
+num_measures = hapr_data_small[hapr_data_small['CPU'] == 0.5].shape[0]
 measures = [0 for _ in range(num_measures)]
 
 hapr_data_small = hapr_data_small.append( \
@@ -69,12 +49,37 @@ hapr_data_big = hapr_data_big.append(
         ignore_index=True)
 
 
-haproxy = hapr_data_small
-instruments.plot_vnf_data(haproxy)
+input_data = [
+    {
+        'data': hapr_data_small,
+        'label': 'Small',
+        'marker': '*',
+        'color': 'blue',
+    },
+
+    {
+        'data': hapr_data_big,
+        'label': 'Big',
+        'marker': '.',
+        'color': 'red',
+    }
+]
+
+instruments.plot_vnf_data([input_data[0]], 'Haproxy Small')
+instruments.plot_vnf_data([input_data[1]], 'Haproxy Big')
+instruments.plot_vnf_data(input_data, 'Haproxy Both')
 
 
-vnf_name = 'haproxy'
-X, y, scaler = instruments.prepare_data(haproxy, vnf_name)
+vnf_name = 'Haproxy Small'
+X, y, scaler = instruments.prepare_data(hapr_data_small, vnf_name)
+X_scaled = scaler.transform(X)
+
+models = instruments.train_tune_eval_models(X_scaled, y, vnf_name)
+instruments.predict_plot(models, scaler, X, y, vnf_name)
+
+
+vnf_name = 'Haproxy Big'
+X, y, scaler = instruments.prepare_data(hapr_data_big, vnf_name)
 X_scaled = scaler.transform(X)
 
 models = instruments.train_tune_eval_models(X_scaled, y, vnf_name)

@@ -21,6 +21,10 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 
 
+CUSTOM_LIGHT_BLUE = '#3e8ed3'
+CUSTOM_BLUE = '#3e5395'
+
+
 class FixedModel(BaseEstimator):
     def __init__(self, fixed_value):
         self.fixed_value = fixed_value
@@ -47,18 +51,23 @@ def replace_size(df):
     df["size"] = df["size"].str.replace("ab -c 1 -t 60 -n 99999999 -e /tngbench_share/ab_dist.csv -s 60 -k -X 20.0.0.254:3128 http://40.0.0.254:80/bunny.mp4", "big")
     return df
 
-def plot_vnf_data(data):
-    sns.set(font_scale=1.5, style='white')
+def plot_vnf_data(input_info, filename):
+    
     fig, ax = plt.subplots()
-    plt.scatter(data['Max. throughput [kB/s]'],
-                data['CPU'],
-                label='HAProxy', marker='.')
+    
+    for it in input_info:
+        plt.scatter(it['data']['Max. throughput [kB/s]'],
+                    it['data']['CPU'],
+                    label=it['label'],
+                    marker=it['marker'],
+                    color=it['color'],
+                    s=5)
 
     ax.set_xlabel('Max. throughput [kB/s]')
     ax.set_ylabel('CPU')
     plt.legend()
     
-    fig.savefig(f'../plots/web_vnf_data.pdf', bbox_inches='tight') # $
+    fig.savefig(f'../plots/{filename} Data.pdf', bbox_inches='tight') # $
     # plt.show() # $
 
 
@@ -96,11 +105,10 @@ def prepare_data(data, vnf_name):
     return X, y, scaler
 
 def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
-    sns.set(font_scale=1.5, style='white')
     assert len(scores_default) == len(scores_tuned) == len(labels)
     
     x = np.arange(len(labels))
-    width = 0.35
+    width = 0.2
 
     fig, ax = plt.subplots(figsize = (8, 5))
     
@@ -111,7 +119,7 @@ def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
             width,
             yerr=rmse_std,
             capsize=5,
-            color='gray',
+            color=CUSTOM_LIGHT_BLUE,
             label='Default')
     
     rmse_mean = [s.mean() for s in scores_tuned]
@@ -121,7 +129,7 @@ def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
             width,
             yerr=rmse_std,
             capsize=5,
-            color='lightgray',
+            color=CUSTOM_BLUE,
             label='Tuned')
         
     # labels
@@ -130,7 +138,7 @@ def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
     ax.set_xticklabels(labels)
     ax.legend()
     
-    fig.savefig(f'../plots/{data_name}_rmse.pdf', bbox_inches='tight')
+    fig.savefig(f'../plots/{data_name} RMSE.pdf', bbox_inches='tight')
 
 def train_tune_eval_models(X, y, vnf_name):
     labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP', 'Fixed']
@@ -151,14 +159,40 @@ def train_tune_eval_models(X, y, vnf_name):
             for model in models_default
     ]
     
-    params_ridge = {'alpha': [0.1, 1, 10]}
-    params_svr = {'kernel': ['poly', 'rbf'], 'C': [1, 10, 100], 
-                  'epsilon': [0.001, 0.01, 0.1]}
-    params_forest = {'n_estimators': [10, 100, 200]}
-    params_boosting = {'learning_rate': [0.01, 0.1, 0.3], 'n_estimators': [10, 100, 200]}
-    params_mlp = {'hidden_layer_sizes': [(64,), (128,), (256)], 'alpha': [0.001, 0.0001, 0.00001],
-                  'learning_rate_init': [0.01, 0.001, 0.0001]}
-    params = [{}, params_ridge, params_svr, params_forest, params_boosting, params_mlp, {}]
+    params_ridge = {
+        'alpha': [0.1, 1, 10]
+    }
+    
+    params_svr = {
+        'kernel': ['poly', 'rbf'],
+        'C': [1, 10, 100], 
+        'epsilon': [0.001, 0.01, 0.1]
+    }
+    
+    params_forest = {
+        'n_estimators': [10, 100, 200]
+    }
+    
+    params_boosting = {
+        'learning_rate': [0.01, 0.1, 0.3],
+        'n_estimators': [10, 100, 200]
+    }
+    
+    params_mlp = {
+        'hidden_layer_sizes': [(64,), (128,), (256)],
+        'alpha': [0.001, 0.0001, 0.00001],
+        'learning_rate_init': [0.01, 0.001, 0.0001]
+    }
+    
+    params = [
+        {}, # Empty for linear
+        params_ridge,
+        params_svr,
+        params_forest,
+        params_boosting,
+        params_mlp,
+        {} # Empty for fixed
+    ]
 
     models_tuned = [
         tune_hyperparams(models_default[i], X, y, params[i])
@@ -177,15 +211,21 @@ def train_tune_eval_models(X, y, vnf_name):
     return models_tuned
 
 def predict_plot(models, scaler, X, y, vnf_name):
-    sns.set(font_scale=1.2, style='white')
+    models = models[:6]
+    labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP']
+    markers = ['d', 'h', 'p', '+', 's', 'x']
+    colors = [
+        'magenta',
+        'orange',
+        'red',
+        'green',
+        CUSTOM_LIGHT_BLUE,
+        CUSTOM_BLUE
+    ]
     
-    models = [models[0], models[2], models[3], models[6]]
-    labels = ['Linear', 'SVR', 'Boosting', 'Fixed']
-    markers = ['x', 'v', '^', '+']
-    colors = ['blue', 'orange', 'red', 'green']
-    
-    fig, ax = plt.subplots()    
-    plt.scatter(X, y, label='True', marker='.', color='black', s=50)
+    fig, ax = plt.subplots()
+    ax.set_ylim((0.0, 1.2))
+    plt.scatter(X, y, label='True', marker='.', color='black')
     X = scaler.transform(X)
     times = []
     
@@ -193,8 +233,15 @@ def predict_plot(models, scaler, X, y, vnf_name):
         name = type(model).__name__
         model.fit(X, y)
         os.makedirs(f'../models/{vnf_name}', exist_ok=True)
-        X_plot = pd.DataFrame(
-                {'Max. throughput [kB/s]': np.arange(200, 2500, 50)})
+
+        if vnf_name == 'Haproxy Small':
+            X_plot = pd.DataFrame(
+                    {'Max. throughput [kB/s]': np.arange(200, 2500, 50)})
+
+        elif vnf_name == 'Haproxy Big':
+            X_plot = pd.DataFrame(
+                    {'Max. throughput [kB/s]': np.arange(200, 800000, 16000)})
+        
         X_plot_scaled = scaler.transform(X_plot)
         start = time.time()
         y_pred = model.predict(X_plot_scaled)
@@ -202,13 +249,14 @@ def predict_plot(models, scaler, X, y, vnf_name):
         plt.scatter(X_plot, y_pred,
                     label=labels[i],
                     marker=markers[i],
-                    color=colors[i])
+                    color=colors[i],
+                    s=5)
     
     plt.xlabel('Traffic load [kB/s]')
     plt.ylabel('CPU')
     plt.legend()
     plt.tight_layout()
-    fig.savefig(f'../plots/{vnf_name}_model_comparison.pdf')
+    fig.savefig(f'../plots/{vnf_name} Model Comparison.pdf')
     # plt.show() # $
     
     return times
