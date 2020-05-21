@@ -1,6 +1,8 @@
 import os
 import time
 import joblib
+import timeit
+import random
 
 import pandas as pd
 import numpy as np
@@ -28,13 +30,15 @@ CUSTOM_BLUE = '#3e5395'
 class FixedModel(BaseEstimator):
     def __init__(self, fixed_value):
         self.fixed_value = fixed_value
-        
+
+
     def fit(self, X, y):
         return self
-    
+
+
     def predict(self, X):
         n_samples = X.shape[0]
-        return [self.fixed_value for _ in range(n_samples)]
+        return [self.fixed_value for i in range(n_samples)]
 
 
 def select_and_rename(df, mapping):
@@ -44,12 +48,14 @@ def select_and_rename(df, mapping):
         dff.rename(columns={k: v}, inplace=True)
     return dff
 
+
 def replace_size(df):
     df["size"] = df["size"].str.replace("ab -c 1 -t 60 -n 99999999 -e /tngbench_share/ab_dist.csv -s 60 -k -i http://20.0.0.254:8888/", "small")
     df["size"] = df["size"].str.replace("ab -c 1 -t 60 -n 99999999 -e /tngbench_share/ab_dist.csv -s 60 -k http://20.0.0.254:8888/bunny.mp4", "big")
     df["size"] = df["size"].str.replace("ab -c 1 -t 60 -n 99999999 -e /tngbench_share/ab_dist.csv -s 60 -k -i -X 20.0.0.254:3128 http://40.0.0.254:80/", "small")
     df["size"] = df["size"].str.replace("ab -c 1 -t 60 -n 99999999 -e /tngbench_share/ab_dist.csv -s 60 -k -X 20.0.0.254:3128 http://40.0.0.254:80/bunny.mp4", "big")
     return df
+
 
 def plot_vnf_data(input_info, filename):
     
@@ -84,6 +90,7 @@ def cross_validation_rmse(model, X, y, vnf_name, k=5, save_model=False):
         joblib.dump(model, f'../models/{vnf_name}/{name}.joblib') # $
     return rmse
 
+
 def tune_hyperparams(model, X, y, params):
     grid_search = GridSearchCV(model,
                                params,
@@ -91,6 +98,7 @@ def tune_hyperparams(model, X, y, params):
                                scoring="neg_mean_squared_error")
     grid_search.fit(X, y)
     return grid_search.best_estimator_
+
 
 def prepare_data(data, vnf_name):
     X = data[['Max. throughput [kB/s]']]
@@ -103,6 +111,27 @@ def prepare_data(data, vnf_name):
     joblib.dump(scaler, f'../models/{vnf_name}/scaler.joblib') # $
     
     return X, y, scaler
+
+
+def barplot_compare_times(times, labels, ylabel='Time [s]', filename=None):
+    assert len(times) == len(labels)
+    
+    # times_mean = [np.array(t).mean() for t in times]
+    # print(times_mean)
+    # times_std = [np.array(t).std() for t in times]
+    x = np.arange(len(labels))
+    
+    sns.set(context='paper', font_scale=0.75, style='whitegrid')
+    fig, ax = plt.subplots(figsize=(8, 4))
+    plt.bar(x, times, 0.5, capsize=5, color='#3e5395')
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel(ylabel)
+    
+    if filename is not None:
+        fig.savefig(f'../plots/{filename}.pdf', bbox_inches='tight')
+
 
 def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
     assert len(scores_default) == len(scores_tuned) == len(labels)
@@ -139,6 +168,7 @@ def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
     ax.legend()
     
     fig.savefig(f'../plots/{data_name} RMSE.pdf', bbox_inches='tight')
+
 
 def train_tune_eval_models(X, y, vnf_name):
     labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP', 'Fixed']
@@ -210,6 +240,7 @@ def train_tune_eval_models(X, y, vnf_name):
         
     return models_tuned
 
+
 def predict_plot(models, scaler, X, y, vnf_name):
     models = models[:6]
     labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP']
@@ -260,3 +291,22 @@ def predict_plot(models, scaler, X, y, vnf_name):
     # plt.show() # $
     
     return times
+
+
+def compare_pred_time():
+    times = []
+    X_rand = pd.DataFrame(data={'Rand max. throughput': [random.randrange(0, 3000) for i in range(1)]})
+    scaler = joblib.load(f'../models/Haproxy Big/scaler.joblib')
+    X_scaled = scaler.transform(X_rand)
+    model_names = ['LinearRegression', 'Ridge', 'SVR', 'RandomForestRegressor', 'GradientBoostingRegressor', 'MLPRegressor', 'FixedModel']
+    models = [joblib.load(f'../models/Haproxy Big/{name}.joblib') for name in model_names]
+    for model in models:
+        t = timeit.timeit("model.predict(X_scaled)",
+                          globals=locals(),
+                          number=1)
+        times.append(t)
+
+    all_times_ms = [t * 1000 for t in times]
+    labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP', 'Fixed']
+
+    barplot_compare_times(all_times_ms, labels, ylabel="Prediction time [ms]", filename='Prediction time comparison')

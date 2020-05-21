@@ -37,7 +37,7 @@ _hapr_data_big = hapr_data_big[:800]
 
 
 num_measures = hapr_data_small[hapr_data_small['CPU'] == 0.5].shape[0]
-measures = [0 for _ in range(num_measures)]
+measures = [0 for i in range(num_measures)]
 
 hapr_data_small = hapr_data_small.append( \
         pd.DataFrame({'Max. throughput [kB/s]': measures, \
@@ -77,16 +77,15 @@ X_scaled = scaler.transform(X)
 models = instruments.train_tune_eval_models(X_scaled, y, vnf_name)
 instruments.predict_plot(models, scaler, X, y, vnf_name)
 
+# vnf_name = 'Haproxy Big'
+# X, y, scaler = instruments.prepare_data(hapr_data_big, vnf_name)
+# X_scaled = scaler.transform(X)
 
-vnf_name = 'Haproxy Big'
-X, y, scaler = instruments.prepare_data(hapr_data_big, vnf_name)
-X_scaled = scaler.transform(X)
-
-models = instruments.train_tune_eval_models(X_scaled, y, vnf_name)
-instruments.predict_plot(models, scaler, X, y, vnf_name)
-
+# models = instruments.train_tune_eval_models(X_scaled, y, vnf_name)
+# instruments.predict_plot(models, scaler, X, y, vnf_name)
 
 
+instruments.compare_pred_time()
 
 
 
