@@ -57,8 +57,7 @@ def replace_size(df):
     return df
 
 
-def plot_vnf_data(input_info, filename):
-    
+def plot_vnf_data(input_info, filename, args):
     fig, ax = plt.subplots()
     
     for it in input_info:
@@ -73,21 +72,24 @@ def plot_vnf_data(input_info, filename):
     ax.set_ylabel('CPU')
     plt.legend()
     
-    fig.savefig(f'../plots/{filename} Data.pdf', bbox_inches='tight') # $
-    # plt.show() # $
+    fig.savefig(f'../plots/{filename} Data.pdf', bbox_inches='tight')
+    if args.display:
+        plt.show()
 
 
-def cross_validation_rmse(model, X, y, vnf_name, k=5, save_model=False):
+def cross_validation_rmse(model, X, y, vnf_name, args, k=5, save_model=False):
     scores = cross_val_score(model,
                              X, y,
                              scoring="neg_mean_squared_error",
                              cv=k)
     rmse = np.sqrt(-scores)
     name = type(model).__name__
-    print(f"CV RMSE of {name}: {rmse.mean()} (+/-{rmse.std()})") # $
+    if args.print:
+        print(f"CV RMSE of {name}: {rmse.mean()} (+/-{rmse.std()})")
     if save_model:
         model.fit(X, y)
-        joblib.dump(model, f'../models/{vnf_name}/{name}.joblib') # $
+        joblib.dump(model, f'../models/{vnf_name}/{name}.joblib')
+    
     return rmse
 
 
@@ -100,30 +102,26 @@ def tune_hyperparams(model, X, y, params):
     return grid_search.best_estimator_
 
 
-def prepare_data(data, vnf_name):
+def prepare_data(data, vnf_name, save_scaler=False):
     X = data[['Max. throughput [kB/s]']]
     y = data['CPU']
     X = X.fillna(X.median())
 
     scaler = MinMaxScaler()
     scaler.fit(X)
-    os.makedirs(f'../models/{vnf_name}', exist_ok=True)
-    joblib.dump(scaler, f'../models/{vnf_name}/scaler.joblib') # $
+    if save_scaler:
+        os.makedirs(f'../models/{vnf_name}', exist_ok=True)
+        joblib.dump(scaler, f'../models/{vnf_name}/scaler.joblib')
     
     return X, y, scaler
 
 
-def barplot_compare_times(times, labels, ylabel='Time [s]', filename=None):
-    assert len(times) == len(labels)
-    
-    # times_mean = [np.array(t).mean() for t in times]
-    # print(times_mean)
-    # times_std = [np.array(t).std() for t in times]
+def barplot_compare_times(times, labels, ylabel, args, filename=None):
+    assert len(times) == len(labels)    
     x = np.arange(len(labels))
     
-    sns.set(context='paper', font_scale=0.75, style='whitegrid')
     fig, ax = plt.subplots(figsize=(8, 4))
-    plt.bar(x, times, 0.5, capsize=5, color='#3e5395')
+    plt.bar(x, times, 0.5, capsize=5, color=CUSTOM_BLUE)
     
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
@@ -131,6 +129,9 @@ def barplot_compare_times(times, labels, ylabel='Time [s]', filename=None):
     
     if filename is not None:
         fig.savefig(f'../plots/{filename}.pdf', bbox_inches='tight')
+
+    if args.display:
+        plt.show()
 
 
 def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
@@ -161,7 +162,6 @@ def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
             color=CUSTOM_BLUE,
             label='Tuned')
         
-    # labels
     ax.set_ylabel('RMSE')
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
@@ -170,7 +170,7 @@ def barplot_compare_rmse(scores_default, scores_tuned, labels, data_name):
     fig.savefig(f'../plots/{data_name} RMSE.pdf', bbox_inches='tight')
 
 
-def train_tune_eval_models(X, y, vnf_name):
+def train_tune_eval_models(X, y, vnf_name, args):
     labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP', 'Fixed']
 
     models_default = [
@@ -182,12 +182,19 @@ def train_tune_eval_models(X, y, vnf_name):
         MLPRegressor(max_iter=1500), 
         FixedModel(fixed_value=0.8)
     ]
+
+    if args.print:
+        print(f'{vnf_name} Default')
     rmse_default = [
         cross_validation_rmse(model,
                               X, y,
-                              vnf_name)
+                              f'{vnf_name}',
+                              args,
+                              save_model=args.save)
             for model in models_default
     ]
+    if args.print:
+        print()
     
     params_ridge = {
         'alpha': [0.1, 1, 10]
@@ -228,10 +235,19 @@ def train_tune_eval_models(X, y, vnf_name):
         tune_hyperparams(models_default[i], X, y, params[i])
         for i in range(len(labels))
     ]
+
+    if args.print:
+        print(f'{vnf_name} Tuned')
     rmse_tuned = [
-        cross_validation_rmse(model, X, y, vnf_name, save_model=True)
+        cross_validation_rmse(model,
+                              X, y,
+                              f'{vnf_name}',
+                              args,
+                              save_model=args.save)
             for model in models_tuned
     ]
+    if args.print:
+        print()
     
     barplot_compare_rmse(rmse_default,
                          rmse_tuned,
@@ -241,7 +257,7 @@ def train_tune_eval_models(X, y, vnf_name):
     return models_tuned
 
 
-def predict_plot(models, scaler, X, y, vnf_name):
+def predict_plot(models, scaler, X, y, vnf_name, args):
     models = models[:6]
     labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP']
     markers = ['d', 'h', 'p', '+', 's', 'x']
@@ -263,7 +279,6 @@ def predict_plot(models, scaler, X, y, vnf_name):
     for i, model in enumerate(models):
         name = type(model).__name__
         model.fit(X, y)
-        os.makedirs(f'../models/{vnf_name}', exist_ok=True)
 
         if vnf_name == 'Haproxy Small':
             X_plot = pd.DataFrame(
@@ -288,25 +303,52 @@ def predict_plot(models, scaler, X, y, vnf_name):
     plt.legend()
     plt.tight_layout()
     fig.savefig(f'../plots/{vnf_name} Model Comparison.pdf')
-    # plt.show() # $
+
+    if args.display:
+        plt.show()
     
     return times
 
 
-def compare_pred_time():
+def compare_pred_time(models, scaler, vnf_name, args):
     times = []
-    X_rand = pd.DataFrame(data={'Rand max. throughput': [random.randrange(0, 3000) for i in range(1)]})
-    scaler = joblib.load(f'../models/Haproxy Big/scaler.joblib')
+    X_rand = pd.DataFrame(
+            data={
+                'Rand max. throughput':
+                    [random.randrange(0, 3000) for i in range(1)]
+            }
+    )
+    
     X_scaled = scaler.transform(X_rand)
-    model_names = ['LinearRegression', 'Ridge', 'SVR', 'RandomForestRegressor', 'GradientBoostingRegressor', 'MLPRegressor', 'FixedModel']
-    models = [joblib.load(f'../models/Haproxy Big/{name}.joblib') for name in model_names]
+
+    if args.print:
+        print(f'{vnf_name} Tuned')
     for model in models:
         t = timeit.timeit("model.predict(X_scaled)",
                           globals=locals(),
                           number=1)
+
         times.append(t)
+        if args.print:
+            print(f'Prediction time of {type(model).__name__}: {t * 1000} ms')
+
+    if args.print:
+        print()
 
     all_times_ms = [t * 1000 for t in times]
-    labels = ['Linear', 'Ridge', 'SVR', 'Forest', 'Boosting', 'MLP', 'Fixed']
+    
+    labels = [
+        'Linear',
+        'Ridge',
+        'SVR',
+        'Forest',
+        'Boosting',
+        'MLP',
+        'Fixed'
+    ]
 
-    barplot_compare_times(all_times_ms, labels, ylabel="Prediction time [ms]", filename='Prediction time comparison')
+    barplot_compare_times(all_times_ms,
+                          labels,
+                          "Prediction time [ms]",
+                          args,
+                          filename=f'{vnf_name} Prediction time comparison')

@@ -4,13 +4,37 @@
 import warnings
 warnings.simplefilter(action='ignore')
 
+import argparse
+import os
+
 import pandas as pd
 import seaborn as sns
 
-import instruments
+import tools
 
 
 sns.set(context='paper', font_scale=0.75, style='whitegrid')
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-p',
+                    '--print',
+                    action="store_true",
+                    help="Print results")
+parser.add_argument('-d',
+                    '--display',
+                    action="store_true",
+                    help="Display plots")
+parser.add_argument('-s',
+                    '--save',
+                    action="store_true",
+                    help="Save models objects")
+args = parser.parse_args()
+
+
+os.makedirs(f'../plots', exist_ok=True)
+if args.save:
+    os.makedirs(f'../models', exist_ok=True)
 
 
 hapr_data = pd.read_csv("../data/haproxy-data.csv")
@@ -23,17 +47,15 @@ mapping = {
     "param__func__de.upb.lb-haproxy.0.1__mem_max": "Memory",
 }
 
-hapr_data = instruments.select_and_rename(hapr_data, mapping)
+hapr_data = tools.select_and_rename(hapr_data, mapping)
 
-hapr_data = instruments.replace_size(hapr_data)
+hapr_data = tools.replace_size(hapr_data)
 
 
 hapr_data_small = hapr_data.loc[(hapr_data["size"] == "small")]
 hapr_data_small = hapr_data_small[["Max. throughput [kB/s]", "CPU"]]
-_hapr_data_small = hapr_data_small[:800]
 hapr_data_big = hapr_data.loc[(hapr_data["size"] == "big")]
 hapr_data_big = hapr_data_big[["Max. throughput [kB/s]", "CPU"]]
-_hapr_data_big = hapr_data_big[:800]
 
 
 num_measures = hapr_data_small[hapr_data_small['CPU'] == 0.5].shape[0]
@@ -65,36 +87,23 @@ input_data = [
     }
 ]
 
-instruments.plot_vnf_data([input_data[0]], 'Haproxy Small')
-instruments.plot_vnf_data([input_data[1]], 'Haproxy Big')
-instruments.plot_vnf_data(input_data, 'Haproxy Both')
+tools.plot_vnf_data([input_data[0]], 'Haproxy Small', args)
+tools.plot_vnf_data([input_data[1]], 'Haproxy Big', args)
+tools.plot_vnf_data(input_data, 'Haproxy Both', args)
 
 
 vnf_name = 'Haproxy Small'
-X, y, scaler = instruments.prepare_data(hapr_data_small, vnf_name)
+X, y, scaler = tools.prepare_data(hapr_data_small, vnf_name, args.save)
 X_scaled = scaler.transform(X)
 
-models = instruments.train_tune_eval_models(X_scaled, y, vnf_name)
-instruments.predict_plot(models, scaler, X, y, vnf_name)
+models = tools.train_tune_eval_models(X_scaled, y, vnf_name, args)
+tools.predict_plot(models, scaler, X, y, vnf_name, args)
+tools.compare_pred_time(models, scaler, vnf_name, args)
 
-# vnf_name = 'Haproxy Big'
-# X, y, scaler = instruments.prepare_data(hapr_data_big, vnf_name)
-# X_scaled = scaler.transform(X)
+vnf_name = 'Haproxy Big'
+X, y, scaler = tools.prepare_data(hapr_data_big, vnf_name,  args.save)
+X_scaled = scaler.transform(X)
 
-# models = instruments.train_tune_eval_models(X_scaled, y, vnf_name)
-# instruments.predict_plot(models, scaler, X, y, vnf_name)
-
-
-instruments.compare_pred_time()
-
-
-
-
-
-
-
-
-
-
-
-print("Aight!")
+models = tools.train_tune_eval_models(X_scaled, y, vnf_name, args)
+tools.predict_plot(models, scaler, X, y, vnf_name, args)
+tools.compare_pred_time(models, scaler, vnf_name, args)
